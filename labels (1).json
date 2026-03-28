@@ -1,1 +1,5 @@
-["Abnormal_Sperm", "Non-Sperm", "Normal_Sperm"]
+{
+    "0": "Abnormal_Sperm",
+    "1": "Non-Sperm",
+    "2": "Normal_Sperm"
+}
