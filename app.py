@@ -15,6 +15,7 @@ import tensorflow as tf
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
 
 from config import Config
 from models import db, User, PatientDetails, SampleUpload, AnalysisResult
@@ -26,7 +27,26 @@ def create_app():
 
     db.init_app(app)
     Migrate(app, db)
-    CORS(app)
+    
+    # -------------------------
+    # CORS CONFIGURATION
+    # -------------------------
+    CORS(app, 
+         resources={
+             r"/api/*": {
+                 "origins": ["*"],
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Authorization"],
+                 "supports_credentials": False,
+                 "max_age": 3600
+             }
+         })
+
+    # -------------------------
+    # DATABASE INITIALIZATION
+    # -------------------------
+    with app.app_context():
+        db.create_all()
 
     os.makedirs(app.config.get("UPLOAD_FOLDER", "uploads"), exist_ok=True)
 
@@ -50,21 +70,21 @@ def create_app():
     try:
         if os.path.exists(MODEL_PATH):
             morph_model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-            print(f"✅ Morphology model loaded (H5 Format)")
+            print("Morphology model loaded (H5 Format)")
         else:
-            print(f"\n⚠️ WAIT! I cannot find the model file. I am looking exactly here:")
-            print(f"👉 {MODEL_PATH}\n")
+            print("\nWAIT! I cannot find the model file. I am looking exactly here:")
+            print(f"{MODEL_PATH}\n")
 
         if os.path.exists(LABELS_PATH):
             with open(LABELS_PATH, "r") as f:
                 morph_labels = json.load(f)
-            print(f"✅ Labels loaded")
+            print("Labels loaded")
         else:
-            print(f"\n⚠️ WAIT! I cannot find the labels file. I am looking exactly here:")
-            print(f"👉 {LABELS_PATH}\n")
+            print("\nWAIT! I cannot find the labels file. I am looking exactly here:")
+            print(f"{LABELS_PATH}\n")
 
     except Exception as e:
-        print("❌ Model load failed with error:", e)
+        print("Model load failed with error:", e)
 
     # -------------------------
     # HELPERS
@@ -104,10 +124,10 @@ def create_app():
             server.login(sender_email, sender_password)
             server.sendmail(sender_email, to_email, msg.as_string())
             server.quit()
-            print("✅ OTP email sent")
+            print("OTP email sent")
             return True
         except Exception as e:
-            print("❌ Email failed:", e)
+            print("Email failed:", e)
             return False
 
     def parse_date(date_str: str):
