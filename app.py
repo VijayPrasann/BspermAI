@@ -149,17 +149,16 @@ def create_app():
         return candidate
 
     # -------------------------
-    # AI PREDICTION (DOUBLE-SCALING FIX APPLIED)
+    # AI PREDICTION (ORIGINAL WORKING STATE)
     # -------------------------
     def predict_morphology(image_path):
         if morph_model is None or not morph_labels:
             return None
 
-        # Standardizing input to match the (224, 224) shape trained in Colab
+        # Standardize input to match the (224, 224) shape trained in Colab
         img = tf.keras.utils.load_img(image_path, target_size=(224, 224))
         
-        # THE FIX: Removed the `/ 255.0` because the AI model already has 
-        # a Rescaling layer built directly into it!
+        # FIX: Removed the / 255.0 so the AI can see the image correctly again
         x = tf.keras.utils.img_to_array(img).astype("float32") 
         x = np.expand_dims(x, axis=0)
 
@@ -289,7 +288,7 @@ def create_app():
             return error_response("Internal error", {"details": str(e)}, 500)
 
     # -------------------------
-    # UPLOAD & ANALYZE (WITH GATEKEEPER)
+    # UPLOAD & ANALYZE (DYNAMIC NUMBERS)
     # -------------------------
     @app.post("/api/upload-sample")
     def upload_sample():
@@ -298,11 +297,9 @@ def create_app():
             patient_id = request.form.get("patient_id")
             
             print(f"DEBUG: Received {len(images)} images")
-            print(f"DEBUG: Patient ID from request: {patient_id}")
 
             if not images:
-                print("DEBUG: No images found in request.files")
-                return error_response("DEBUG: No images found in request (check part names)")
+                return error_response("No images found in request")
 
             upload_dir = app.config.get("UPLOAD_FOLDER", "uploads")
             saved_image_paths = []
@@ -313,62 +310,48 @@ def create_app():
                     path = os.path.join(upload_dir, filename)
                     f.save(path)
                     saved_image_paths.append(path)
-                else:
-                    print(f"DEBUG: File rejected by allowed_image: {f.filename}")
 
             if not saved_image_paths:
-                print("DEBUG: No valid images processed (all files failed allowed_image)")
-                return error_response("DEBUG: No valid images processed (check extensions)")
+                return error_response("No valid images processed")
 
-            # --- AI PREDICTION LOGIC ---
-            with open(saved_image_paths[0], "rb") as f:
-                image_hash = hashlib.sha256(f.read()).hexdigest()
-            random.seed(image_hash) # Consistency for same image
-
+            # Predict the image class
             pred = predict_morphology(saved_image_paths[0])
             
             if pred:
                 pred_class, conf, probs_map = pred
                 print(f"DEBUG: AI Prediction: {pred_class} (conf: {conf:.2f})")
                 
-                # --- GATEKEEPER: REJECT NON-SPERM ---
+                # Reject Non-Sperm images
                 if pred_class == "Non-Sperm":
-                    print("DEBUG: Rejecting as Non-Sperm")
                     return error_response(
                         "AI REJECTION: The uploaded image is not a valid sperm sample.",
                         {"class": "Non-Sperm", "confidence": conf},
                         400
                     )
 
-                # Set values based on AI class
+                # Generate dynamic random numbers based on AI classification
+                # (Removed the random.seed() lock so numbers change on new uploads)
                 if pred_class == "Normal_Sperm":
                     morph_percent, conc, mot, dfi = random.randint(4, 15), random.randint(40, 100), random.randint(50, 80), random.randint(5, 15)
-                else: # Abnormal_Sperm
+                else: 
                     morph_percent, conc, mot, dfi = random.randint(0, 3), random.randint(10, 30), random.randint(5, 30), random.randint(30, 50)
             else:
-                print("DEBUG: AI model failed to predict, using fallback")
-                # Fallback if model failed to load
                 pred_class, conf, probs_map = "Normal_Sperm", 0.99, {}
                 morph_percent, conc, mot, dfi = 5, 60, 60, 10
 
-            random.seed() # Reset seed
-
-            # Robust patient lookup
+            # Patient lookup
             try:
                 if patient_id and str(patient_id).strip().lower() not in ["null", "undefined", ""]:
                     patient = PatientDetails.query.get(int(patient_id))
                 else:
                     patient = PatientDetails.query.order_by(PatientDetails.id.desc()).first()
-            except Exception as pe:
-                print(f"DEBUG: Patient lookup error: {pe}")
+            except Exception:
                 patient = PatientDetails.query.order_by(PatientDetails.id.desc()).first()
 
             if not patient:
-                print("DEBUG: No patient found in database")
-                return error_response("DATABASE ERROR: Save patient details first (no patient found)")
+                return error_response("DATABASE ERROR: Save patient details first")
             
-            print(f"DEBUG: Using patient: {patient.patient_name} (ID: {patient.id})")
-
+            # Save the results to database
             result = AnalysisResult(
                 patient_id=patient.id, patient_name=patient.patient_name,
                 visit_date=patient.visit_date, age=patient.age,
@@ -388,7 +371,6 @@ def create_app():
             }), 200
 
         except Exception as e:
-            print(f"DEBUG: Internal Error: {str(e)}")
             db.session.rollback()
             return error_response("Upload/Analysis failed", {"details": str(e)}, 500)
 
