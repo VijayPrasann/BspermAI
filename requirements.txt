@@ -7,3 +7,4 @@ python-dotenv
 numpy
 tensorflow
 Werkzeug
+Pillow
